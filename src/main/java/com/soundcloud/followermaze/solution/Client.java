@@ -18,7 +18,7 @@ class UserThread extends Thread {
     private BufferedReader in;
     private PrintWriter out;
     private ConcurrentHashMap<Integer, PrintWriter> channelMap;
-    private ConcurrentHashMap<Integer, LinkedList<Integer>> followerMap;
+    private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>> followerMap;
 
     public UserThread(Socket socket, ConcurrentHashMap channelMap, ConcurrentHashMap followerMap) {
         this.socket = socket;
@@ -38,7 +38,7 @@ class UserThread extends Thread {
             while ((input = in.readLine()) != null) {
                 System.out.println(input);
                 channelMap.put(Integer.parseInt(input), out);
-                followerMap.put(Integer.parseInt(input), new LinkedList<>());
+                followerMap.put(Integer.parseInt(input), new ConcurrentHashMap<>());
                 System.out.println("Channel size : " + channelMap.keySet().size() + ", FollowerMap size : " + followerMap.keySet().size());
             }
 

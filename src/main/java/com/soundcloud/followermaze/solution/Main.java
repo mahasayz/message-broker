@@ -1,9 +1,6 @@
 package com.soundcloud.followermaze.solution;
 
 import java.io.PrintWriter;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -18,7 +15,7 @@ class Workers extends Thread {
 
     private ConcurrentSkipListMap<Integer, Event> eventMap;
     private ConcurrentHashMap<Integer, PrintWriter> clientMap;
-    private ConcurrentHashMap<Integer, List<Integer>> followerMap;
+    private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>> followerMap;
     private AtomicInteger counter;
 
     public Workers(ConcurrentSkipListMap eventMap, ConcurrentHashMap clientMap, ConcurrentHashMap followerMap, AtomicInteger counter) {
@@ -37,13 +34,15 @@ class Workers extends Thread {
                 System.out.println("Handling event with Id " + event.getId());
                 switch (event.getType()) {
                     case "F": {
+                        if (event.getFromId() == event.getToId())
+                            System.out.println("From and To are similar for " + event.getId());
                         PrintWriter socket = clientMap.getOrDefault(event.getToId(), null);
-                        List list = followerMap.get(event.getFromId());
+                        ConcurrentHashMap<Integer, Boolean> list = followerMap.get(event.getToId());
                         if (list == null) {
-                            list = new LinkedList<Integer>();
+                            list = new ConcurrentHashMap();
                         }
-                        list.add(event.getToId());
-                        followerMap.put(event.getFromId(), list);
+                        list.put(event.getFromId(), true);
+                        followerMap.put(event.getToId(), list);
                         if (socket != null) {
                             socket.println(event.getMessage());
                         }
@@ -53,6 +52,11 @@ class Workers extends Thread {
                     }
                     case "U": {
                         eventMap.remove(event.getId());
+                        ConcurrentHashMap<Integer, Boolean> list = followerMap.get(event.getToId());
+                        if (list != null) {
+                            if (list.getOrDefault(event.getFromId(), false))
+                                list.remove(event.getFromId());
+                        }
                         System.out.println("Counter : " + counter.incrementAndGet());
                         break;
                     }
@@ -74,14 +78,18 @@ class Workers extends Thread {
                         break;
                     }
                     case "S": {
-                        for (Integer toId : followerMap.getOrDefault(event.getFromId(), Collections.<Integer>emptyList())) {
-                            PrintWriter socket = clientMap.getOrDefault(toId, null);
-                            if (socket == null) {
-                                System.out.println("Couldn't get " + toId + " from channelMap");
-                                continue;
+                        ConcurrentHashMap<Integer, Boolean> map = followerMap.get(event.getFromId());
+                        if (map != null) {
+                            for (Integer toId : map.keySet()) {
+                                PrintWriter socket = clientMap.getOrDefault(toId, null);
+                                if (socket == null) {
+                                    System.out.println("Couldn't get " + toId + " from channelMap");
+                                    continue;
+                                }
+                                socket.println(event.getMessage());
                             }
-                            socket.println(event.getMessage());
                         }
+
                         System.out.println("Counter : " + counter.incrementAndGet());
                         eventMap.remove(event.getId());
                         break;
@@ -98,8 +106,8 @@ public class Main {
 
     private ConcurrentSkipListMap<Integer, Event> eventMap;
     private ConcurrentHashMap<Integer, PrintWriter> clientMap;
-    private ConcurrentHashMap<Integer, List<Integer>> followerMap;
-    private ExecutorService executors = Executors.newFixedThreadPool(16);
+    private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>> followerMap;
+    private ExecutorService executors = Executors.newFixedThreadPool(32);
     private AtomicInteger counter;
 
     public void init() throws InterruptedException {
